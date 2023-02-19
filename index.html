@@ -1,0 +1,181 @@
+<html>
+
+<head>
+	<link rel="stylesheet" type="text/css" href="src/litegraph.css">
+	<link rel="stylesheet" type="text/css" href="src/litegraph-editor.css">
+	<script type="text/javascript" src="src/litegraph.js"></script>
+	<!-- <script type="text/javascript" src="litegraph-editor.js"></script> -->
+</head>
+
+<body style='width:100%; height:100%'>
+	<div id="main"></div>
+	<div>
+		<button id="startbtn">Start</button>
+		<button id="stopbtn">Stop</button>
+	</div>
+	<canvas id='mycanvas' width='1024' height='720' style='border: 1px solid'></canvas>
+	<script>
+			class ImageFrame {
+				constructor() {
+					this.mode = LiteGraph.ON_EVENT;
+					this.addInput("", "image,canvas");
+					this.addInput("imgtrigger", LiteGraph.EVENT);
+					this.size = [200, 200];
+				}
+
+				onDrawBackground(ctx) {
+					if (this.frame && !this.flags.collapsed) {
+						ctx.drawImage(this.frame, 0, 0, this.size[0], this.size[1]);
+					}
+				}
+
+				onExecute() {
+					this.frame = this.getInputData(0);
+					this.setDirtyCanvas(true);
+				}
+
+				onAction(action, param) {
+					this.frame = param;
+					this.setDirtyCanvas(true);
+				}
+
+				onWidget(e, {name}) {
+					if (name == "resize" && this.frame) {
+						let width = this.frame.width;
+						let height = this.frame.height;
+
+						if (!width && this.frame.videoWidth != null) {
+							width = this.frame.videoWidth;
+							height = this.frame.videoHeight;
+						}
+
+						if (width && height) {
+							this.size = [width, height];
+						}
+						this.setDirtyCanvas(true, true);
+					} else if (name == "view") {
+						this.show();
+					}
+				}
+
+				show() {
+					//var str = this.canvas.toDataURL("image/png");
+					if (showElement && this.frame) {
+						showElement(this.frame);
+					}
+				}
+			}
+
+			ImageFrame.title = "Frame";
+			ImageFrame.desc = "Frame viewerew";
+			ImageFrame.widgets = [
+				{ name: "resize", text: "Resize box", type: "button" },
+				{ name: "view", text: "View Image", type: "button" }
+			];
+			LiteGraph.registerNodeType("graphics/onimage", ImageFrame);
+	</script>
+	<script>
+		url = "http://127.0.0.1:7860"
+		LiteGraph.registerNodeType("network/post", class {
+			constructor () {
+				this.addInput("value", "String");
+				this.addOutput("frame", "image");
+				this.addOutput("gotimage", LiteGraph.EVENT);
+				this.addProperty("url", "http://127.0.0.1:7860", "string");
+				this.size = [180, 60];
+				this.title = "Post request";
+				this.desc = "Post to url";
+			}
+			// this.widget = this.addWidget("number","value",1,"value");
+			// this.widgets_up = true;
+			// let thiz = this;
+
+			onExecute () {
+				//this.setOutputData(0, parseFloat(this.properties["value"]));
+				let url = this.properties["url"] + "/sdapi/v1/txt2img";
+				let input = this.inputs["value"];
+
+				fetch(url, {
+					method: 'POST',
+					headers: {
+						'Accept': 'application/json',
+						'Content-Type': 'application/json',
+						'Access-Control-Allow-Origin': "*"
+					},
+					body: JSON.stringify({
+						"prompt": input,
+						"steps": 15
+					})
+				})
+				.then(response => response.json())
+				.then(response => {
+					console.log(response);
+					let img0 =  response["images"][0];
+					let image = new Image();
+					image.src = "data:image/jpg;base64,"+img0;
+					this.outputs["frame"] = image;
+					// this.outputs["gotimage"] = true;
+					this.trigger("gotimage", image);
+				})
+			};
+
+			getTitle() {
+				if (this.flags.collapsed) {
+					return this.properties.url;
+				}
+				return this.title;
+			};
+
+			setValue(v) {
+				this.setProperty("url", v);
+			}
+
+			onDrawBackground(ctx) {
+				//show the current value
+				//this.outputs[0].label = this.properties["value"].toFixed(3);
+			};
+		});
+	</script>
+	<script>
+		//enable scripting
+		LiteGraph.allow_scripts = true;
+		var graph = new LGraph();
+
+		var canvas = new LGraphCanvas("#mycanvas", graph);
+
+		// var node_const = LiteGraph.createNode("basic/const");
+		// node_const.pos = [200, 200];
+		// graph.add(node_const);
+		// node_const.setValue(4.5);
+
+		// var node_watch = LiteGraph.createNode("basic/watch");
+		// node_watch.pos = [700, 200];
+		// graph.add(node_watch);
+
+		let node_str = LiteGraph.createNode("basic/string");
+		// node_str.outputs[0] = "by mike winkelmann";
+		node_str.pos = [200, 200];
+		graph.add(node_str);
+
+		let node_post = LiteGraph.createNode("network/post");
+		node_post.pos = [400, 200];
+		graph.add(node_post);
+
+		let node_view_imager = LiteGraph.createNode("graphics/onimage");
+		node_view_imager.pos = [600, 200];
+		graph.add(node_view_imager);
+
+		node_str.connect(0, node_post, 0);
+		// node_const.connect(0, node_watch, 0);
+		node_post.connect(0, node_view_imager, 0);
+		node_post.connect(1, node_view_imager, 1);
+	</script>
+	<script>
+		let startbutton = document.getElementById("startbtn");
+		let stopbutton = document.getElementById("stopbtn");
+		startbutton.onclick = () => { graph.runStep(1); };
+		stopbutton.onclick = () => { graph.stop() };
+	</script>
+</body>
+
+</html>
